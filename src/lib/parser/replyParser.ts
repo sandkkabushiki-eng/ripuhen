@@ -7,6 +7,7 @@ import type { ParsedComment, RegularUser } from '@/types';
  * 1. シンプル: ユーザー名: コメント内容
  * 2. 区切り線あり: ---\nユーザー名\nコメント内容\n---
  * 3. 番号付き: 1. ユーザー名: コメント内容
+ * 4. インスタグラム形式: コメント内容\nX時間前返信 (ユーザー名なし)
  */
 export function parseReplies(
   text: string,
@@ -23,8 +24,12 @@ export function parseReplies(
   // フォーマット検出
   const hasDividers = text.includes('---');
   const hasNumberedFormat = /^\d+\.\s*@?[\w_]+:/.test(lines[0] || '');
+  const isInstagramFormat = detectInstagramFormat(text);
 
-  if (hasDividers) {
+  if (isInstagramFormat) {
+    // フォーマット4: インスタグラム形式（ユーザー名なし）
+    return parseInstagramFormat(text, regularUsers);
+  } else if (hasDividers) {
     // フォーマット2: 区切り線あり
     const sections = text.split('---').filter(s => s.trim());
     
@@ -91,6 +96,81 @@ export function parseReplies(
     }
   }
 
+  return comments;
+}
+
+/**
+ * インスタグラム形式かどうかを検出
+ * 特徴: 「X時間前返信」「X日前返信」「いいね！X件」などのパターン
+ */
+function detectInstagramFormat(text: string): boolean {
+  const instagramPatterns = [
+    /\d+時間前.*返信/,
+    /\d+日前.*返信/,
+    /\d+分前.*返信/,
+    /\d+秒前.*返信/,
+    /「いいね！」\d+件/,
+    /いいね！\d+件/,
+  ];
+  
+  return instagramPatterns.some(pattern => pattern.test(text));
+}
+
+/**
+ * インスタグラム形式をパース
+ * コメント内容と時間情報（X時間前返信など）で区切る
+ */
+function parseInstagramFormat(
+  text: string,
+  regularUsers: RegularUser[]
+): ParsedComment[] {
+  const comments: ParsedComment[] = [];
+  const lines = text.trim().split('\n');
+  
+  let currentContent: string[] = [];
+  let userCounter = 1;
+  
+  // 時間・メタ情報のパターン
+  const metaPattern = /^(\d+(?:時間|日|分|秒)前)(?:「?いいね！」?\d+件)?返信$/;
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    
+    if (!trimmedLine) continue;
+    
+    // メタ情報行かどうかチェック
+    if (metaPattern.test(trimmedLine)) {
+      // 現在のコメントを保存
+      if (currentContent.length > 0) {
+        const content = currentContent.join('\n').trim();
+        if (content) {
+          comments.push({
+            username: `user_${userCounter}`,
+            content,
+            regularUser: undefined,
+          });
+          userCounter++;
+        }
+      }
+      currentContent = [];
+    } else {
+      // コメント内容として追加
+      currentContent.push(trimmedLine);
+    }
+  }
+  
+  // 最後のコメントを保存
+  if (currentContent.length > 0) {
+    const content = currentContent.join('\n').trim();
+    if (content) {
+      comments.push({
+        username: `user_${userCounter}`,
+        content,
+        regularUser: undefined,
+      });
+    }
+  }
+  
   return comments;
 }
 
