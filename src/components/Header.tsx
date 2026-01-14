@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useUIStore } from '@/stores/uiStore';
 import AccountSelector from './AccountSelector';
 
@@ -8,13 +8,20 @@ export default function Header() {
   const { isDarkMode, toggleDarkMode, setIsSettingsOpen } = useUIStore();
 
   // 初期化時にダークモード設定を読み込み
-  useEffect(() => {
+  const initDarkMode = useCallback(() => {
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
-    if (savedDarkMode !== isDarkMode) {
+    const currentIsDark = document.documentElement.classList.contains('dark');
+    if (savedDarkMode !== currentIsDark) {
       document.documentElement.classList.toggle('dark', savedDarkMode);
-      toggleDarkMode();
+      if (savedDarkMode !== isDarkMode) {
+        toggleDarkMode();
+      }
     }
-  }, []);
+  }, [isDarkMode, toggleDarkMode]);
+
+  useEffect(() => {
+    initDarkMode();
+  }, [initDarkMode]);
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-lg">
