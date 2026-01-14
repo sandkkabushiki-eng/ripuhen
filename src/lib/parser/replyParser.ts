@@ -8,6 +8,7 @@ import type { ParsedComment, RegularUser } from '@/types';
  * 2. 区切り線あり: ---\nユーザー名\nコメント内容\n---
  * 3. 番号付き: 1. ユーザー名: コメント内容
  * 4. インスタグラム形式: コメント内容\nX時間前返信 (ユーザー名なし)
+ * 5. Twitter形式: 表示名\n@ユーザーID\n·\n日付\nコメント内容
  */
 export function parseReplies(
   text: string,
@@ -25,8 +26,12 @@ export function parseReplies(
   const hasDividers = text.includes('---');
   const hasNumberedFormat = /^\d+\.\s*@?[\w_]+:/.test(lines[0] || '');
   const isInstagramFormat = detectInstagramFormat(text);
+  const isTwitterFormat = detectTwitterFormat(text);
 
-  if (isInstagramFormat) {
+  if (isTwitterFormat) {
+    // フォーマット5: Twitter形式
+    return parseTwitterFormat(text, regularUsers);
+  } else if (isInstagramFormat) {
     // フォーマット4: インスタグラム形式（ユーザー名なし）
     return parseInstagramFormat(text, regularUsers);
   } else if (hasDividers) {
@@ -96,6 +101,107 @@ export function parseReplies(
     }
   }
 
+  return comments;
+}
+
+/**
+ * Twitter形式かどうかを検出
+ * 特徴: @ユーザーID と · と 日付（X月X日）のパターン
+ */
+function detectTwitterFormat(text: string): boolean {
+  // @ユーザーID の行があるか
+  const hasAtUsername = /@[\w_]+/.test(text);
+  // · と日付のパターンがあるか
+  const hasDatePattern = /·\s*\d+月\d+日/.test(text) || /·[\s\n]*\d+月\d+日/.test(text);
+  
+  return hasAtUsername && hasDatePattern;
+}
+
+/**
+ * Twitter形式をパース
+ * 表示名\n@ユーザーID\n·\n日付\nコメント内容
+ */
+function parseTwitterFormat(
+  text: string,
+  regularUsers: RegularUser[]
+): ParsedComment[] {
+  const comments: ParsedComment[] = [];
+  const lines = text.trim().split('\n');
+  
+  let currentUsername = '';
+  let currentDisplayName = '';
+  let currentContent: string[] = [];
+  let state: 'looking_for_user' | 'looking_for_date' | 'reading_content' = 'looking_for_user';
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    if (!line) continue;
+    
+    // @ユーザーIDの行を検出
+    const atMatch = line.match(/^@([\w_]+)$/);
+    if (atMatch) {
+      // 前のコメントを保存
+      if (currentUsername && currentContent.length > 0) {
+        const content = currentContent.join('\n').trim();
+        if (content) {
+          const regularUser = findRegularUser(currentUsername, regularUsers);
+          comments.push({
+            username: currentUsername,
+            content,
+            regularUser,
+          });
+        }
+      }
+      
+      // 前の行が表示名
+      if (i > 0 && lines[i - 1].trim() && !lines[i - 1].trim().startsWith('@') && !lines[i - 1].trim().startsWith('·')) {
+        currentDisplayName = lines[i - 1].trim();
+      }
+      
+      currentUsername = atMatch[1];
+      currentContent = [];
+      state = 'looking_for_date';
+      continue;
+    }
+    
+    // 日付行を検出（·で始まる、または「X月X日」を含む）
+    if (state === 'looking_for_date') {
+      if (line === '·' || /^\d+月\d+日/.test(line) || /^·\s*\d+月\d+日/.test(line)) {
+        state = 'reading_content';
+        continue;
+      }
+      // ·と日付が別行の場合
+      if (line.startsWith('·')) {
+        continue; // 次の行で日付を確認
+      }
+    }
+    
+    // コメント内容を読み取り
+    if (state === 'reading_content' && currentUsername) {
+      // 次のユーザーの表示名っぽい行（@で始まらない、短い行）は無視
+      const nextLine = lines[i + 1]?.trim();
+      if (nextLine && nextLine.startsWith('@')) {
+        // この行は次のユーザーの表示名なのでスキップ
+        continue;
+      }
+      currentContent.push(line);
+    }
+  }
+  
+  // 最後のコメントを保存
+  if (currentUsername && currentContent.length > 0) {
+    const content = currentContent.join('\n').trim();
+    if (content) {
+      const regularUser = findRegularUser(currentUsername, regularUsers);
+      comments.push({
+        username: currentUsername,
+        content,
+        regularUser,
+      });
+    }
+  }
+  
   return comments;
 }
 
