@@ -4,8 +4,7 @@ import { Button, Card } from '@/components/ui';
 import { useUIStore } from '@/stores/uiStore';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useLearnedPatterns } from '@/hooks/useLearnedPatterns';
-import { useReplyHistory } from '@/hooks/useReplyHistory';
-import { copyToClipboard, formatAllReplies, formatAllRepliesWithDivider } from '@/lib/utils/clipboard';
+import { copyToClipboard, formatAllReplies } from '@/lib/utils/clipboard';
 import ReplyItem from './ReplyItem';
 import type { ParsedComment } from '@/types';
 
@@ -20,8 +19,7 @@ export default function ReplyResults() {
     addToast,
   } = useUIStore();
   const { selectedAccount } = useAccounts();
-  const { patterns, learnFromEdit, getTopPatterns } = useLearnedPatterns();
-  const { saveFeedback } = useReplyHistory();
+  const { learnFromEdit, getTopPatterns } = useLearnedPatterns();
 
   const handleGenerate = async () => {
     if (!selectedAccount) {
@@ -148,19 +146,17 @@ export default function ReplyResults() {
     await learnFromEdit(selectedAccount.id, originalReply, newText);
   };
 
-  const handleFeedback = async (id: string, feedback: 'good' | 'bad') => {
-    updateReply(id, { feedback });
-    await saveFeedback(id, feedback);
+  const handleDelete = (id: string) => {
+    const newReplies = generatedReplies.filter((r) => r.id !== id);
+    setGeneratedReplies(newReplies);
+    addToast('削除しました', 'info');
   };
 
-  const handleCopyAll = async (withDivider: boolean) => {
-    const text = withDivider
-      ? formatAllRepliesWithDivider(generatedReplies)
-      : formatAllReplies(generatedReplies, true);
-
+  const handleCopyAll = async () => {
+    const text = formatAllReplies(generatedReplies, true);
     const success = await copyToClipboard(text);
     if (success) {
-      addToast('すべての返信をコピーしました', 'success');
+      addToast('すべてコピーしました', 'success');
     } else {
       addToast('コピーに失敗しました', 'error');
     }
@@ -226,52 +222,42 @@ export default function ReplyResults() {
       {/* 結果一覧 */}
       {generatedReplies.length > 0 && (
         <>
-          <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pb-4">
+          <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pb-4">
             {generatedReplies.map((reply, index) => (
               <ReplyItem
                 key={reply.id}
                 reply={reply}
                 onEdit={(newText) => handleEdit(reply.id, newText)}
                 onRegenerate={() => handleRegenerate(index)}
-                onFeedback={(feedback) => handleFeedback(reply.id, feedback)}
+                onDelete={() => handleDelete(reply.id)}
               />
             ))}
           </div>
 
           {/* 一括操作 */}
-          <div className="pt-4 border-t border-gray-200 dark:border-dark-border space-y-2">
-            <div className="flex gap-2">
-              <Button
-                onClick={() => handleCopyAll(false)}
-                variant="primary"
-                className="flex-1"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                </svg>
-                すべてコピー（改行区切り）
-              </Button>
-              <Button
-                onClick={() => handleCopyAll(true)}
-                variant="secondary"
-                className="flex-1"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-                区切り線あり
-              </Button>
-            </div>
+          <div className="pt-3 border-t border-gray-200 dark:border-dark-border flex gap-2">
+            <Button
+              onClick={handleCopyAll}
+              variant="primary"
+              size="sm"
+              className="flex-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              全コピー
+            </Button>
             <Button
               onClick={handleGenerate}
-              variant="ghost"
-              className="w-full"
+              variant="secondary"
+              size="sm"
+              className="flex-1"
               isLoading={isGenerating}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              すべて再生成
+              全再生成
             </Button>
           </div>
         </>
